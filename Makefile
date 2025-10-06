@@ -60,7 +60,7 @@ example5: libklt.a
 # -----------------------------------------------------------------------------
 profile: clean
 	@echo "Building instrumented program (gcc -pg -O0 ... -> myprogram)"
-	$(CC) -pg -O0 $(CFLAGS) $(ARCH) example1.c -o myprogram -lm
+	$(CC) -pg -O0 $(CFLAGS) $(ARCH) example3.c -o myprogram -lm
 	@echo "Built myprogram (instrumented)."
 
 run-profile: profile
