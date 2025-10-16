@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "base.h": "c",
+        "error.h": "c",
+        "pnmio.h": "c",
+        "klt.h": "c"
+    }
+}

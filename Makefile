@@ -1,4 +1,4 @@
-# Makefile for KLT builds and profiling
+# Makefile for KLT builds and profiling with reorganized directory structure
 # Usage:
 #   make run-profile   # builds instrumented binary, runs it, and generates analysis.txt
 #   make profile       # builds instrumented binary only
@@ -16,80 +16,64 @@ CC = gcc
 
 # Flags
 FLAG1 = -DNDEBUG
-FLAG2 = -DKLT_USE_QSORT   # Uncomment for standard qsort()
-CFLAGS = $(FLAG1) $(FLAG2)
+FLAG2 = -DKLT_USE_QSORT
+CFLAGS = $(FLAG1) $(FLAG2) -I./include
 
-LIB = -L/usr/local/lib -L/usr/lib
+# Directories
+SRC_DIR = src
+INCLUDE_DIR = include
+EXAMPLE_DIR = examples
+DATA_DIR = data
+BUILD_DIR = build
 
-EXAMPLES = example1.c example2.c example3.c example4.c example5.c
-ARCH = convolve.c error.c pnmio.c pyramid.c selectGoodFeatures.c \
-       storeFeatures.c trackFeatures.c klt.c klt_util.c writeFeatures.c
+# Source files
+SRC_FILES = $(wildcard $(SRC_DIR)/*.c)
+OBJ_FILES = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
-.PHONY: all libklt.a profile run-profile depend clean help
+# Example files
+EXAMPLES = $(wildcard $(EXAMPLE_DIR)/*.c)
+EXAMPLE_BINS = $(patsubst $(EXAMPLE_DIR)/%.c,%,$(EXAMPLES))
 
-all: libklt.a $(EXAMPLES:.c=)
+# Library
+LIB_FILE = $(BUILD_DIR)/libklt.a
 
-# compile .c -> .o
-%.o: %.c
+# Default target
+all: $(LIB_FILE) $(EXAMPLE_BINS)
+
+# Build the library
+$(LIB_FILE): $(OBJ_FILES)
+	ar rcs $@ $^
+
+# Compile source files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) -c $(CFLAGS) -o $@ $<
 
-# static library
-libklt.a: $(ARCH:.c=.o)
-	rm -f libklt.a
-	ar ruv libklt.a $(ARCH:.c=.o)
+# Build examples
+%: $(EXAMPLE_DIR)/%.c $(LIB_FILE)
+	$(CC) $(CFLAGS) -o $@ $< -L$(BUILD_DIR) -lklt -lm
 
-# example targets (unoptimized by default to make debugging easy)
-example1: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
+# Create build directory
+$(BUILD_DIR):
+	mkdir -p $@
 
-example2: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
+# Clean target
+clean:
+	rm -rf $(BUILD_DIR)/*.o $(BUILD_DIR)/*.a $(EXAMPLE_BINS)
+	rm -f feat*.ppm features.ft features.txt gmon.out myprogram myprogram.opt analysis.txt
 
-example3: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-example4: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-example5: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-# -----------------------------------------------------------------------------
-# Profiling build (instrumented for gprof) -- matches the workflow you used.
-# Use 'make run-profile' to build, run, and generate analysis.txt.
-# -----------------------------------------------------------------------------
+# Profiling targets
 profile: clean
 	@echo "Building instrumented program (gcc -pg -O0 ... -> myprogram)"
-	$(CC) -pg -O0 $(CFLAGS) $(ARCH) example3.c -o myprogram -lm
+	$(CC) -pg -O0 $(CFLAGS) -I$(INCLUDE_DIR) $(EXAMPLE_DIR)/example1.c $(SRC_FILES) -o myprogram -lm
 	@echo "Built myprogram (instrumented)."
 
 run-profile: profile
 	@echo "Running instrumented program (will generate gmon.out)"
-	./myprogram img1.ppm img2.ppm
-	@echo "Running gprof to produce analysis.txt"
-	gprof ./myprogram gmon.out > analysis.txt || true
-	@echo "Profile saved to analysis.txt (and gmon.out was produced in the current directory)"
+	cd $(DATA_DIR) && ../myprogram img1.pgm img2.pgm
+	gprof ./myprogram gmon.out > analysis.txt
+	@echo "Created analysis.txt"
 
-# -----------------------------------------------------------------------------
-# Helpful: optimized build + perf profiling (recommended before GPU porting)
-# -----------------------------------------------------------------------------
-profile-optimized: clean
-	@echo "Building optimized binary for sampling profilers (-O3 -g -fno-omit-frame-pointer)"
-	$(CC) -O3 -g -fno-omit-frame-pointer $(CFLAGS) $(ARCH) example1.c -o myprogram.opt -lm
-	@echo "Use a sampling profiler (perf, VTune, etc.) with ./myprogram.opt ..."
-
-# dependency helper (requires makedepend installed)
-depend:
-	makedepend $(ARCH) $(EXAMPLES) || true
-
-clean:
-	rm -f *.o *.a $(EXAMPLES:.c=) *.tar *.tar.gz libklt.a \
-	\teat*.ppm features.ft features.txt gmon.out myprogram myprogram.opt analysis.txt
-
-help:
-	@echo "Targets:"
-	@echo "  make run-profile   # build instrumented program, run it, and gprof -> analysis.txt"
-	@echo "  make profile       # build instrumented program only"
-	@echo "  make profile-optimized # build optimized binary for perf / sampling profilers"
-	@echo "  make all           # build libklt.a and examples (unoptimized)"
-	@echo "  make clean         # remove artifacts"
+profile-optimized:
+	@echo "Building optimized program with debug symbols (gcc -O3 -g -fno-omit-frame-pointer -> myprogram.opt)"
+	$(CC) -O3 -g -fno-omit-frame-pointer $(CFLAGS) -I$(INCLUDE_DIR) $(EXAMPLE_DIR)/example1.c $(SRC_FILES) -o myprogram.opt -lm
+	@echo "Built myprogram.opt"

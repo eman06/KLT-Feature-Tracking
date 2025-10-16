@@ -10,7 +10,7 @@
 #include <stdlib.h>  /* malloc(), atoi() */
 
 /* Our includes */
-#include "error.h"
+#include "../include/error.h"
 
 #define LENGTH 80
 

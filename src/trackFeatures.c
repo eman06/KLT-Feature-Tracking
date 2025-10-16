@@ -10,12 +10,12 @@
 #include <stdio.h>		/* fflush() */
 
 /* Our includes */
-#include "base.h"
-#include "error.h"
-#include "convolve.h"	/* for computing pyramid */
-#include "klt.h"
-#include "klt_util.h"	/* _KLT_FloatImage */
-#include "pyramid.h"	/* _KLT_Pyramid */
+#include "../include/base.h"
+#include "../include/error.h"
+#include "../include/convolve.h"	/* for computing pyramid */
+#include "../include/klt.h"
+#include "../include/klt_util.h"	/* _KLT_FloatImage */
+#include "../include/pyramid.h"	/* _KLT_Pyramid */
 
 extern int KLT_verbose;
 

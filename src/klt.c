@@ -8,13 +8,14 @@
 #include <assert.h>
 #include <math.h>    /* logf() */
 #include <stdlib.h>  /* malloc() */
+#include <stdio.h>
 
 /* Our includes */
-#include "base.h"
-#include "convolve.h"
-#include "error.h"
-#include "klt.h"
-#include "pyramid.h"
+#include "../include/base.h"
+#include "../include/convolve.h"
+#include "../include/error.h"
+#include "../include/klt.h"
+#include "../include/pyramid.h"
 
 
 static const int mindist = 10;

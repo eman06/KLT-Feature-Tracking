@@ -12,12 +12,12 @@
 #define fsqrt(X) sqrt(X)
 
 /* Our includes */
-#include "base.h"
-#include "error.h"
-#include "convolve.h"
-#include "klt.h"
-#include "klt_util.h"
-#include "pyramid.h"
+#include "../include/base.h"
+#include "../include/error.h"
+#include "../include/convolve.h"
+#include "../include/klt.h"
+#include "../include/klt_util.h"
+#include "../include/pyramid.h"
 
 int KLT_verbose = 1;
 

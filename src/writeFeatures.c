@@ -12,10 +12,10 @@
 #include <string.h>		/* memcpy(), strcmp() */
 
 /* Our includes */
-#include "base.h"
-#include "error.h"
-#include "pnmio.h"		/* ppmWriteFileRGB() */
-#include "klt.h"
+#include "../include/base.h"
+#include "../include/error.h"
+#include "../include/pnmio.h"		/* ppmWriteFileRGB() */
+#include "../include/klt.h"
 
 #define BINHEADERLENGTH	6
 

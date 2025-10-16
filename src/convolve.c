@@ -8,10 +8,10 @@
 #include <stdlib.h>   /* malloc(), realloc() */
 
 /* Our includes */
-#include "base.h"
-#include "error.h"
-#include "convolve.h"
-#include "klt_util.h"   /* printing */
+#include "../include/base.h"
+#include "../include/error.h"
+#include "../include/convolve.h"
+#include "../include/klt_util.h"   /* printing */
 
 #define MAX_KERNEL_WIDTH 	71
 

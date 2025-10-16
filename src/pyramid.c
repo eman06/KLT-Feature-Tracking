@@ -10,10 +10,10 @@
 #include <math.h>		/* */
 
 /* Our includes */
-#include "base.h"
-#include "error.h"
-#include "convolve.h"	/* for computing pyramid */
-#include "pyramid.h"
+#include "../include/base.h"
+#include "../include/error.h"
+#include "../include/convolve.h"	/* for computing pyramid */
+#include "../include/pyramid.h"
 
 
 /*********************************************************************
