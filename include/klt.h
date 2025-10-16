@@ -24,6 +24,7 @@ typedef unsigned char KLT_PixelType;
 #ifndef NULL
 #define NULL  0
 #endif
+#define MAX_FEATURES 150
 
 #define KLT_TRACKED           0
 #define KLT_NOT_FOUND        -1
@@ -51,6 +52,7 @@ typedef struct  {
   /* tracking features */
   KLT_BOOL lighting_insensitive;  /* whether to normalize for gain and bias (not in original algorithm) */
   
+
   /* Available, but hopefully can ignore */
   int min_eigenvalue;		/* smallest eigenvalue allowed for selecting */
   float min_determinant;	/* th for determining lost */
