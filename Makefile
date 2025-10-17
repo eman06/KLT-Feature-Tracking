@@ -62,7 +62,7 @@ libklt.a: $(CPU_SOURCES:.c=.o)
 # -------------------------------------------------------------------
 clean:
 	rm -f *.o *.a myprogram myprogram_gpu \
-		features.ft features.txt gmon.out myprogram.opt analysis.txt
+		features.ft features.txt gmon.out myprogram.opt analysis.txt feat*.ppm
 
 # -------------------------------------------------------------------
 # Help
