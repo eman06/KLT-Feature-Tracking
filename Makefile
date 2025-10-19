@@ -1,95 +1,90 @@
-# Makefile for KLT builds and profiling
-# Usage:
-#   make run-profile   # builds instrumented binary, runs it, and generates analysis.txt
-#   make profile       # builds instrumented binary only
-#   make all           # builds libklt.a and example programs (unoptimized)
-#   make clean         # remove build/artifacts
-#
-# Notes:
-#  - The 'run-profile' target will compile with -pg and -O0 (the same flags you used),
-#    run the program to produce gmon.out, and then run gprof to create analysis.txt.
-#  - For realistic hotspot identification before GPU porting, also run the
-#    "optimized profiling" commands documented in README.md (perf / flamegraphs).
-#  - Ensure this Makefile is edited to point to your actual image filenames if needed.
+# Makefile for KLT CPU and GPU-naive builds
 
 CC = gcc
+NVCC = nvcc
 
 # Flags
-FLAG1 = -DNDEBUG
-FLAG2 = -DKLT_USE_QSORT   # Uncomment for standard qsort()
-CFLAGS = $(FLAG1) $(FLAG2)
+CFLAGS = -DNDEBUG -DKLT_USE_QSORT
+NVCCFLAGS = -O3
 
-LIB = -L/usr/local/lib -L/usr/lib
+LIB = -L. -L/usr/local/lib -L/usr/lib -lm
 
-EXAMPLES = example1.c example2.c example3.c example4.c example5.c
-ARCH = convolve.c error.c pnmio.c pyramid.c selectGoodFeatures.c \
-       storeFeatures.c trackFeatures.c klt.c klt_util.c writeFeatures.c
+CPU_EXAMPLE = example3.c         # CPU version
+GPU_EXAMPLE = example3_gpu.c     # GPU-naive version
 
-.PHONY: all libklt.a profile run-profile depend clean help
+CPU_SOURCES = convolve.c error.c pnmio.c pyramid.c selectGoodFeatures.c \
+              storeFeatures.c trackFeatures.c klt.c klt_util.c writeFeatures.c
+GPU_SOURCES = convolve_gpu.cu selectGoodFeatures_gpu.cu
 
-all: libklt.a $(EXAMPLES:.c=)
+.PHONY: all clean cpu gpu-naive help profile-gpu profile-gpu-ncu profile-gpu-nsys
 
-# compile .c -> .o
+# -------------------------------------------------------------------
+# Default target
+# -------------------------------------------------------------------
+all: cpu
+
+# -------------------------------------------------------------------
+# CPU build and run
+# -------------------------------------------------------------------
+cpu: libklt.a
+	@echo "Building CPU version..."
+	$(CC) -O0 $(CFLAGS) $(CPU_SOURCES) $(CPU_EXAMPLE) -o myprogram $(LIB)
+	@echo "Running CPU program with timing..."
+	@/usr/bin/time -f "\nCPU Execution Time: %E" ./myprogram img1.ppm img2.ppm
+
+# -------------------------------------------------------------------
+# GPU-naive build and run
+# -------------------------------------------------------------------
+gpu-naive: libklt.a
+	@echo "Building GPU-naive version..."
+	$(NVCC) -O3 -arch=sm_86 -Xcompiler -w \
+	         $(GPU_EXAMPLE) $(GPU_SOURCES) \
+	         $(CPU_SOURCES) \
+	         -o myprogram_gpu -lm
+	@echo "Running GPU-naive program with timing..."
+	@/usr/bin/time -f "\nGPU Execution Time: %E" ./myprogram_gpu img1.ppm img2.ppm
+
+# -------------------------------------------------------------------
+# Build static library for CPU code
+# -------------------------------------------------------------------
+libklt.a: $(CPU_SOURCES:.c=.o)
+	rm -f libklt.a
+	ar ruv libklt.a $(CPU_SOURCES:.c=.o)
+
+# -------------------------------------------------------------------
+# Compile .c -> .o
+# -------------------------------------------------------------------
 %.o: %.c
 	$(CC) -c $(CFLAGS) -o $@ $<
 
-# static library
-libklt.a: $(ARCH:.c=.o)
-	rm -f libklt.a
-	ar ruv libklt.a $(ARCH:.c=.o)
-
-# example targets (unoptimized by default to make debugging easy)
-example1: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-example2: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-example3: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-example4: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-example5: libklt.a
-	$(CC) -O0 $(CFLAGS) -o $@ $@.c -L. -lklt $(LIB) -lm
-
-# -----------------------------------------------------------------------------
-# Profiling build (instrumented for gprof) -- matches the workflow you used.
-# Use 'make run-profile' to build, run, and generate analysis.txt.
-# -----------------------------------------------------------------------------
-profile: clean
-	@echo "Building instrumented program (gcc -pg -O0 ... -> myprogram)"
-	$(CC) -pg -O0 $(CFLAGS) $(ARCH) example3.c -o myprogram -lm
-	@echo "Built myprogram (instrumented)."
-
-run-profile: profile
-	@echo "Running instrumented program (will generate gmon.out)"
-	./myprogram img1.ppm img2.ppm
-	@echo "Running gprof to produce analysis.txt"
-	gprof ./myprogram gmon.out > analysis.txt || true
-	@echo "Profile saved to analysis.txt (and gmon.out was produced in the current directory)"
-
-# -----------------------------------------------------------------------------
-# Helpful: optimized build + perf profiling (recommended before GPU porting)
-# -----------------------------------------------------------------------------
-profile-optimized: clean
-	@echo "Building optimized binary for sampling profilers (-O3 -g -fno-omit-frame-pointer)"
-	$(CC) -O3 -g -fno-omit-frame-pointer $(CFLAGS) $(ARCH) example1.c -o myprogram.opt -lm
-	@echo "Use a sampling profiler (perf, VTune, etc.) with ./myprogram.opt ..."
-
-# dependency helper (requires makedepend installed)
-depend:
-	makedepend $(ARCH) $(EXAMPLES) || true
-
+# -------------------------------------------------------------------
+# Clean
+# -------------------------------------------------------------------
 clean:
-	rm -f *.o *.a $(EXAMPLES:.c=) *.tar *.tar.gz libklt.a \
-	\teat*.ppm features.ft features.txt gmon.out myprogram myprogram.opt analysis.txt
+	rm -f *.o *.a myprogram myprogram_gpu \
+		features.ft features.txt gmon.out myprogram.opt analysis.txt feat*.ppm analysis_report.* *.nsys-rep *.qdrep
 
+# -------------------------------------------------------------------
+# GPU Profiling (modern NVIDIA GPUs)
+# -------------------------------------------------------------------
+profile-gpu-ncu: gpu-naive
+	@echo "Profiling GPU binary with Nsight Compute (ncu)..."
+	ncu --set full --target-processes all --log-file analysis.txt ./myprogram_gpu img1.ppm img2.ppm || echo "ncu failed or not found."
+
+profile-gpu-nsys: gpu-naive
+	@echo "Profiling GPU binary with Nsight Systems (nsys)..."
+	nsys profile -o analysis_report ./myprogram_gpu img1.ppm img2.ppm || echo "nsys failed or not found."
+
+profile-gpu: profile-gpu-ncu
+
+# -------------------------------------------------------------------
+# Help
+# -------------------------------------------------------------------
 help:
 	@echo "Targets:"
-	@echo "  make run-profile   # build instrumented program, run it, and gprof -> analysis.txt"
-	@echo "  make profile       # build instrumented program only"
-	@echo "  make profile-optimized # build optimized binary for perf / sampling profilers"
-	@echo "  make all           # build libklt.a and examples (unoptimized)"
-	@echo "  make clean         # remove artifacts"
+	@echo "  make cpu              # build & run CPU implementation"
+	@echo "  make gpu-naive        # build & run GPU implementation"
+	@echo "  make profile-gpu      # profile GPU with Nsight Compute (ncu), output to analysis.txt"
+	@echo "  make profile-gpu-ncu  # profile GPU with ncu, output to analysis.txt"
+	@echo "  make profile-gpu-nsys # profile GPU with nsys, output to analysis_report.qdrep"
+	@echo "  make clean            # remove artifacts"

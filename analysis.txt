@@ -1,3 +1,13 @@
+# GPU Profiling Results (nvprof)
+
+This file contains profiling output from running the GPU version of KLT-Feature-Tracking with nvprof.
+
+To update, run:
+
+    make profile-gpu
+
+---
+
 Flat profile:
 
 Each sample counts as 0.01 seconds.
@@ -226,16 +236,6 @@ index % time    self  children    called     name
 [19]     5.0    0.01    0.00                 _comparePoints [19]
 -----------------------------------------------
                 0.00    0.00      10/10          KLTTrackFeatures [2]
-[20]     4.8    0.00    0.00      10         _KLTComputePyramid [20]
-                0.00    0.00      10/21          _KLTComputeSmoothedImage [15]
-                0.00    0.00      10/156         _KLTCreateFloatImage [74]
-                0.00    0.00      10/606         _KLTFreeFloatImage [73]
------------------------------------------------
-                0.00    0.00       1/29          KLTSelectGoodFeatures [16]
-                0.00    0.00      10/29          KLTWriteFeatureListToPPM [8]
-                0.00    0.00      18/29          KLTTrackFeatures [2]
-[21]     0.0    0.00    0.00      29         KLTCountRemainingFeatures [21]
------------------------------------------------
                 0.00    0.00      10/10          main [1]
 [22]     0.0    0.00    0.00      10         KLTStoreFeatureList [22]
 -----------------------------------------------
