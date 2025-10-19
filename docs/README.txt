@@ -1,3 +1,9 @@
+HPC - CCP
+Muhammad Omer Khan         23I-0650
+Eman Ihsan                 23I-0530
+Google Drive: https://drive.google.com/drive/folders/1g4VjdiIDBaRK7Z1JAC1LPGLGo8pyZfeH
+
+
 **********************************************************************
 NOTICE:
 
@@ -32,4 +38,5 @@ The code can be obtained from http://www.ces.clemson.edu/~stb/klt
 (alternatively http://www.vision.stanford.edu/~birch/klt),
 where the official manuals reside.  For your convenience, unofficial 
 manuals have been placed in the current subdirectory 'doc'.
+
 
