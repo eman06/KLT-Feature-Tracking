@@ -51,7 +51,7 @@ img2 = (unsigned char *) malloc(ncols*nrows*sizeof(unsigned char));
   KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat0.ppm");
 
   for (i = 1 ; i < nFrames ; i++)  {
-    sprintf(fnamein, "img%d.pgm", i);
+    sprintf(fnamein, "data/img%d.pgm", i);
     pgmReadFile(fnamein, img2, &ncols, &nrows);
     KLTTrackFeatures(tc, img1, img2, ncols, nrows, fl);
 #ifdef REPLACE
