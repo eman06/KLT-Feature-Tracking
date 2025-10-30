@@ -18,12 +18,12 @@ LIB = -L. -L/usr/local/lib -L/usr/lib -lm
 
 
 
-CPU_EXAMPLE = example3.c         # CPU version
-GPU_EXAMPLE = example3_gpu.c     # GPU-naive version
+CPU_EXAMPLE = examples/example3.c         # CPU version
+GPU_EXAMPLE = GPU_functions/example3_gpu.c     # GPU-naive version
 
-CPU_SOURCES = convolve.c error.c pnmio.c pyramid.c selectGoodFeatures.c \
-              storeFeatures.c trackFeatures.c klt.c klt_util.c writeFeatures.c
-GPU_SOURCES = convolve_gpu.cu selectGoodFeatures_gpu.cu
+CPU_SOURCES = src/convolve.c src/error.c src/pnmio.c src/pyramid.c src/selectGoodFeatures.c \
+              src/storeFeatures.c src/trackFeatures.c src/klt.c src/klt_util.c src/writeFeatures.c
+GPU_SOURCES = GPU_functions/convolve_gpu.cu GPU_functions/selectGoodFeatures_gpu.cu
 
 
 
