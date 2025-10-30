@@ -1,107 +1,105 @@
-# ============================================================
-# Makefile for KLT Feature Tracking (CPU, GPU-Naive, GPU-Optimized)
-# Works on both WSL and HPC environments
-# ============================================================
+# Makefile for KLT CPU and GPU-naive builds
 
-# Compilers
-CC      = gcc
-NVCC    = nvcc
 
-# Directories
-SRC_DIR = src
-GPU_DIR = GPU_functions
-EX_DIR  = examples
-INC_DIR = include
-DATA_DIR = data
 
-# Compiler flags
-CFLAGS     = -O2 -DNDEBUG -DKLT_USE_QSORT -I$(INC_DIR)
-NVCCFLAGS  = -O3 -arch=sm_75 -I$(INC_DIR)
 
-# Libraries
-LIBS = -lm
+CC = gcc
+NVCC = nvcc
+
+
+# Flags
+CFLAGS = -DNDEBUG -DKLT_USE_QSORT
+NVCCFLAGS = -O3
+
+
+
+
+LIB = -L. -L/usr/local/lib -L/usr/lib -lm
+
+
+
+CPU_EXAMPLE = example3.c         # CPU version
+GPU_EXAMPLE = example3_gpu.c     # GPU-naive version
+
+CPU_SOURCES = convolve.c error.c pnmio.c pyramid.c selectGoodFeatures.c \
+              storeFeatures.c trackFeatures.c klt.c klt_util.c writeFeatures.c
+GPU_SOURCES = convolve_gpu.cu selectGoodFeatures_gpu.cu
+
+
+
+
+
+
+
+.PHONY: all clean cpu gpu-naive help
+
+
 
 # -------------------------------------------------------------------
-# Source files
-# -------------------------------------------------------------------
-CPU_SOURCES = $(SRC_DIR)/convolve.c $(SRC_DIR)/error.c $(SRC_DIR)/pnmio.c \
-              $(SRC_DIR)/pyramid.c $(SRC_DIR)/selectGoodFeatures.c \
-              $(SRC_DIR)/storeFeatures.c $(SRC_DIR)/trackFeatures.c \
-              $(SRC_DIR)/klt.c $(SRC_DIR)/klt_util.c $(SRC_DIR)/writeFeatures.c
-
-GPU_SOURCES = $(GPU_DIR)/convolve_gpu.cu $(GPU_DIR)/selectGoodFeatures_gpu.cu
-
-CPU_EXAMPLE      = $(EX_DIR)/example3.c
-GPU_EXAMPLE      = $(EX_DIR)/example3_gpu.c
-OPTIMIZED_MAIN   = main.cpp
-
-# -------------------------------------------------------------------
-# Targets
-# -------------------------------------------------------------------
-.PHONY: all clean cpu gpu-naive gpu-opt help
-
 # Default target
+# -------------------------------------------------------------------
+
+
+
 all: cpu
 
 # -------------------------------------------------------------------
-# CPU build & run
+# CPU build and run
 # -------------------------------------------------------------------
 cpu: libklt.a
-	@echo "🧠 Building CPU version..."
-	$(CC) $(CFLAGS) $(CPU_SOURCES) $(CPU_EXAMPLE) -o myprogram $(LIBS)
-	@echo "▶️  Running CPU program with timing..."
-	@/usr/bin/time -f "\nCPU Execution Time: %E" ./myprogram $(DATA_DIR)/img1.pgm $(DATA_DIR)/img2.pgm
+	@echo "Building CPU version..."
+	$(CC) -O0 $(CFLAGS) $(CPU_SOURCES) $(CPU_EXAMPLE) -o myprogram $(LIB)
+	@echo "Running CPU program with timing..."
+	@/usr/bin/time -f "\nCPU Execution Time: %E" ./myprogram img1.ppm img2.ppm
 
 # -------------------------------------------------------------------
-# GPU-Naive build & run
+# GPU-naive build and run
 # -------------------------------------------------------------------
 gpu-naive: libklt.a
-	@echo "⚙️  Building GPU-Naive version..."
-	$(NVCC) $(NVCCFLAGS) $(GPU_EXAMPLE) $(GPU_SOURCES) $(CPU_SOURCES) -o myprogram_gpu $(LIBS)
-	@echo "▶️  Running GPU-Naive program with timing..."
-	@/usr/bin/time -f "\nGPU-Naive Execution Time: %E" ./myprogram_gpu $(DATA_DIR)/img1.pgm $(DATA_DIR)/img2.pgm
+	@echo "Building GPU-naive version..."
+	$(NVCC) -O3 -arch=sm_75 -Xcompiler -w \
+	         $(GPU_EXAMPLE) $(GPU_SOURCES) \
+	         $(CPU_SOURCES) \
+	         -o myprogram_gpu -lm
+	@echo "Running GPU-naive program with timing..."
+	@/usr/bin/time -f "\nGPU Execution Time: %E" ./myprogram_gpu img1.ppm img2.ppm
+
+
+
+
+
+
+
+
 
 # -------------------------------------------------------------------
-# GPU-Optimized build & run
-# -------------------------------------------------------------------
-gpu-opt:
-	@echo "🚀 Building Optimized GPU version..."
-	$(NVCC) $(NVCCFLAGS) $(OPTIMIZED_MAIN) $(GPU_DIR)/kernels_shared.cu $(GPU_DIR)/klt_gpu.cu \
-	$(CPU_SOURCES) -o myprogram_gpu_opt $(LIBS)
-	@echo "▶️  Running Optimized GPU version with timing..."
-	@/usr/bin/time -f "\nGPU-Optimized Execution Time: %E" ./myprogram_gpu_opt $(DATA_DIR)/img1.pgm $(DATA_DIR)/img2.pgm
-	@echo "✅ Built Optimized GPU version successfully!"
-
-# -------------------------------------------------------------------
-# Build static library for CPU files
+# Build static library for CPU code
 # -------------------------------------------------------------------
 libklt.a: $(CPU_SOURCES:.c=.o)
-	@echo "📦 Creating static library libklt.a..."
+
 	rm -f libklt.a
 	ar ruv libklt.a $(CPU_SOURCES:.c=.o)
 
 # -------------------------------------------------------------------
 # Compile .c -> .o
 # -------------------------------------------------------------------
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+%.o: %.c
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 # -------------------------------------------------------------------
-# Clean build artifacts
+# Clean
 # -------------------------------------------------------------------
 clean:
-	@echo "🧹 Cleaning project..."
-	rm -f $(SRC_DIR)/*.o *.a myprogram myprogram_gpu myprogram_gpu_opt \
-		features.ft features.txt feat*.ppm gmon.out analysis.txt
-	@echo "✅ Clean complete!"
+	rm -f *.o *.a myprogram myprogram_gpu \
+		features.ft features.txt gmon.out myprogram.opt analysis.txt feat*.ppm
+
+
 
 # -------------------------------------------------------------------
-# Help menu
+# Help
 # -------------------------------------------------------------------
 help:
-	@echo "================ KLT Feature Tracking Build System ================"
-	@echo "make cpu        → Build & run CPU implementation"
-	@echo "make gpu-naive  → Build & run GPU-naive implementation"
-	@echo "make gpu-opt    → Build & run GPU-optimized implementation"
-	@echo "make clean      → Remove all build artifacts"
-	@echo "==================================================================="
+	@echo "Targets:"
+	@echo "  make cpu         # build & run CPU implementation"
+	@echo "  make gpu-naive   # build & run GPU implementation"
+	@echo "  make clean       # remove artifacts"
