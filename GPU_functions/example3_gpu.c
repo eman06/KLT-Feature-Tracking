@@ -8,8 +8,8 @@ saved to a text file; each feature list is also written to a PPM file.
 #include "selectGoodFeatures_gpu.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include "pnmio.h"
-#include "klt.h"
+#include "include/pnmio.h"
+#include "include/klt.h"
 
 /* #define REPLACE */
 
