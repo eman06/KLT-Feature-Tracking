@@ -42,7 +42,7 @@ gpu-naive: libklt.a
 	         $(CPU_SOURCES) \
 	         -o myprogram_gpu -lm
 	@echo "Running GPU-naive program with timing..."
-	@/usr/bin/time -f "\nGPU Execution Time: %E" ./myprogram_gpu data/img1.ppm data/img2.pgm 
+	@/usr/bin/time -f "\nGPU Execution Time: %E" ./myprogram_gpu data/img1.pgm data/img2.pgm data/img0.pgm
 
 # -------------------------------------------------------------------
 # Build static library for CPU code
