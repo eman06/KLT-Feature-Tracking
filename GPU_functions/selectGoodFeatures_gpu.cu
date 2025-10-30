@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
-#include "klt.h"
-#include "error.h"
+#include "include/klt.h"
+#include "include/error.h"
 #include "selectGoodFeatures_gpu.h"
 
 #ifdef __cplusplus
