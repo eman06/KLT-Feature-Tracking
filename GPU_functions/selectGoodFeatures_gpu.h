@@ -1,7 +1,7 @@
 #ifndef SELECTGOODFEATURES_GPU_H
 #define SELECTGOODFEATURES_GPU_H
 
-#include "include/klt.h"
+#include "klt.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,4 +23,5 @@ extern "C" {
 #endif
 
 #endif
+
 
