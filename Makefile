@@ -1,22 +1,13 @@
 # Makefile for KLT CPU and GPU-naive builds
 
-
-
-
 CC = gcc
 NVCC = nvcc
 
-
 # Flags
-CFLAGS = -DNDEBUG -DKLT_USE_QSORT
-NVCCFLAGS = -O3
-
-
-
+CFLAGS = -DNDEBUG -DKLT_USE_QSORT -I./include -I./src
+NVCCFLAGS = -O3 -I./include -I./src
 
 LIB = -L. -L/usr/local/lib -L/usr/lib -lm
-
-
 
 CPU_EXAMPLE = examples/example3.c         # CPU version
 GPU_EXAMPLE = GPU_functions/example3_gpu.c     # GPU-naive version
@@ -25,22 +16,11 @@ CPU_SOURCES = src/convolve.c src/error.c src/pnmio.c src/pyramid.c src/selectGoo
               src/storeFeatures.c src/trackFeatures.c src/klt.c src/klt_util.c src/writeFeatures.c
 GPU_SOURCES = GPU_functions/convolve_gpu.cu GPU_functions/selectGoodFeatures_gpu.cu
 
-
-
-
-
-
-
 .PHONY: all clean cpu gpu-naive help
-
-
 
 # -------------------------------------------------------------------
 # Default target
 # -------------------------------------------------------------------
-
-
-
 all: cpu
 
 # -------------------------------------------------------------------
@@ -57,26 +37,17 @@ cpu: libklt.a
 # -------------------------------------------------------------------
 gpu-naive: libklt.a
 	@echo "Building GPU-naive version..."
-	$(NVCC) -O3 -arch=sm_75 -Xcompiler -w \
+	$(NVCC) $(NVCCFLAGS) -arch=sm_75 -Xcompiler -w \
 	         $(GPU_EXAMPLE) $(GPU_SOURCES) \
 	         $(CPU_SOURCES) \
 	         -o myprogram_gpu -lm
 	@echo "Running GPU-naive program with timing..."
 	@/usr/bin/time -f "\nGPU Execution Time: %E" ./myprogram_gpu img1.ppm img2.ppm
 
-
-
-
-
-
-
-
-
 # -------------------------------------------------------------------
 # Build static library for CPU code
 # -------------------------------------------------------------------
 libklt.a: $(CPU_SOURCES:.c=.o)
-
 	rm -f libklt.a
 	ar ruv libklt.a $(CPU_SOURCES:.c=.o)
 
@@ -92,8 +63,6 @@ libklt.a: $(CPU_SOURCES:.c=.o)
 clean:
 	rm -f *.o *.a myprogram myprogram_gpu \
 		features.ft features.txt gmon.out myprogram.opt analysis.txt feat*.ppm
-
-
 
 # -------------------------------------------------------------------
 # Help
