@@ -34,18 +34,23 @@ int main()
   tc->writeInternalImages = FALSE;
   //tc->affineConsistencyCheck = -1;  /* set this to 2 to turn on affine consistency check */
  
-img1 = pgmReadFile("img0.pgm", NULL, &ncols, &nrows);  
+img1 = pgmReadFile("images-3.0/images-3.0/img0.pgm", NULL, &ncols, &nrows);  
 img2 = (unsigned char *) malloc(ncols*nrows*sizeof(unsigned char));
 
-  // Use CPU implementation for feature selection (GPU tracking only)
-  fprintf(stderr, "Using CPU implementation for feature selection\n");
-  KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
+  // KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
+  if (KLTInitCUDA() != 0) {
+    fprintf(stderr, "CUDA initialization failed, using CPU implementation\n");
+    KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
+  } else {
+    fprintf(stderr, "Using GPU implementation\n");
+    KLTSelectGoodFeatures_GPU(tc, img1, ncols, nrows, fl);
+  }
   
   KLTStoreFeatureList(fl, ft, 0);
   KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat0.ppm");
 
   for (i = 1 ; i < nFrames ; i++)  {
-    sprintf(fnamein, "img%d.pgm", i);
+    sprintf(fnamein, "images-3.0/images-3.0/img%d.pgm", i);
     pgmReadFile(fnamein, img2, &ncols, &nrows);
     KLTTrackFeatures(tc, img1, img2, ncols, nrows, fl);
 #ifdef REPLACE
@@ -55,8 +60,8 @@ img2 = (unsigned char *) malloc(ncols*nrows*sizeof(unsigned char));
     sprintf(fnameout, "feat%d.ppm", i);
     // KLTWriteFeatureListToPPM(fl, img2, ncols, nrows, fnameout);
   }
-  // KLTWriteFeatureTable(ft, "features.txt", "%5.1f");
-  // KLTWriteFeatureTable(ft, "features.ft", NULL);
+  KLTWriteFeatureTable(ft, "features.txt", "%5.1f");
+  KLTWriteFeatureTable(ft, "features.ft", NULL);
 
   KLTFreeFeatureTable(ft);
   KLTFreeFeatureList(fl);

@@ -19,6 +19,22 @@
 
 extern int KLT_verbose;
 
+#ifdef KLT_USE_GPU
+// External GPU convolution functions from convolve_gpu.cu 
+extern void _KLTComputeGradients_gpu_wrapper(float* h_img, int ncols, int nrows, 
+                                             float sigma, float* h_gradx, float* h_grady);
+extern void _KLTComputeGradients_gpu_batched_streams(float* h_img, int ncols, int nrows, 
+                                                      float sigma, float* h_gradx, float* h_grady);
+extern void _KLTInitStreams(int ncols, int nrows);
+extern void _KLTDestroyStreams();
+extern void _KLTSyncD2HStream();
+
+// Flag to use streams optimization (persistent across calls)
+static int use_streams = 1;  // Set to 1 to enable async pipelining
+static int streams_initialized = 0;  // Global flag, set once
+static int last_ncols = 0, last_nrows = 0;  // Track image size for re-init
+#endif
+
 typedef float *_FloatWindow;
 
 /*********************************************************************
@@ -1250,10 +1266,24 @@ void KLTTrackFeatures(
 	int i;
 
 	if (KLT_verbose >= 1)  {
-		fprintf(stderr,  "(KLT) Tracking %d features in a %d by %d image...  ",
-			KLTCountRemainingFeatures(featurelist), ncols, nrows);
+		// fprintf(stderr,  "(KLT) Tracking %d features in a %d by %d image...  ",
+			// KLTCountRemainingFeatures(featurelist), ncols, nrows);
 		fflush(stderr);
 	}
+
+#ifdef KLT_USE_GPU
+	/* Initialize CUDA streams on first call or if image size changed */
+	if (use_streams && (!streams_initialized || last_ncols != ncols || last_nrows != nrows)) {
+		if (streams_initialized) {
+			_KLTDestroyStreams();  /* Recreate if size changed */
+		}
+		_KLTInitStreams(ncols, nrows);
+		streams_initialized = 1;
+		last_ncols = ncols;
+		last_nrows = nrows;
+		fprintf(stderr, "[TRACE] KLTTrackFeatures: Streams initialized for %dx%d, use_streams=%d\n", ncols, nrows, use_streams);
+	}
+#endif
 
 	/* Check window size (and correct if necessary) */
 	if (tc->window_width % 2 != 1) {
@@ -1301,10 +1331,23 @@ void KLTTrackFeatures(
 		_KLTComputePyramid(floatimg1, pyramid1, tc->pyramid_sigma_fact);
 		pyramid1_gradx = _KLTCreatePyramid(ncols, nrows, (int) subsampling, tc->nPyramidLevels);
 		pyramid1_grady = _KLTCreatePyramid(ncols, nrows, (int) subsampling, tc->nPyramidLevels);
-		for (i = 0 ; i < tc->nPyramidLevels ; i++)
-			_KLTComputeGradients(pyramid1->img[i], tc->grad_sigma, 
-			pyramid1_gradx->img[i],
-			pyramid1_grady->img[i]);
+#ifdef KLT_USE_GPU
+    // GPU version: Use batched streams for async pipelining
+    // Wrapper allocates 3 buffers per call = massive malloc overhead (94.1% of API time)
+    // Batched uses persistent pre-allocated memory
+    for (i = 0 ; i < tc->nPyramidLevels ; i++) {
+      _KLTComputeGradients_gpu_batched_streams(pyramid1->img[i]->data, 
+        pyramid1->img[i]->ncols, pyramid1->img[i]->nrows, tc->grad_sigma,
+        pyramid1_gradx->img[i]->data,
+        pyramid1_grady->img[i]->data);
+    }
+#else
+    // CPU version: Use standard CPU gradient computation
+    for (i = 0 ; i < tc->nPyramidLevels ; i++) {
+      _KLTComputeGradients(pyramid1->img[i], tc->grad_sigma, 
+        pyramid1_gradx->img[i], pyramid1_grady->img[i]);
+    }
+#endif
 	}
 
 	/* Do the same thing with second image */
@@ -1315,10 +1358,25 @@ void KLTTrackFeatures(
 	_KLTComputePyramid(floatimg2, pyramid2, tc->pyramid_sigma_fact);
 	pyramid2_gradx = _KLTCreatePyramid(ncols, nrows, (int) subsampling, tc->nPyramidLevels);
 	pyramid2_grady = _KLTCreatePyramid(ncols, nrows, (int) subsampling, tc->nPyramidLevels);
-	for (i = 0 ; i < tc->nPyramidLevels ; i++)
-		_KLTComputeGradients(pyramid2->img[i], tc->grad_sigma, 
-		pyramid2_gradx->img[i],
-		pyramid2_grady->img[i]);
+#ifdef KLT_USE_GPU
+  // GPU version: Use batched streams for async pipelining
+  for (i = 0 ; i < tc->nPyramidLevels ; i++) {
+    _KLTComputeGradients_gpu_batched_streams(pyramid2->img[i]->data,
+      pyramid2->img[i]->ncols, pyramid2->img[i]->nrows, tc->grad_sigma,
+      pyramid2_gradx->img[i]->data,
+      pyramid2_grady->img[i]->data);
+  }
+  /* Synchronize D2H stream if using streams */
+  if (use_streams) {
+    _KLTSyncD2HStream();
+  }
+#else
+  // CPU version: Use standard CPU gradient computation
+  for (i = 0 ; i < tc->nPyramidLevels ; i++) {
+    _KLTComputeGradients(pyramid2->img[i], tc->grad_sigma,
+      pyramid2_gradx->img[i], pyramid2_grady->img[i]);
+  }
+#endif
 
 	/* Write internal images */
 	if (tc->writeInternalImages)  {
@@ -1340,6 +1398,7 @@ void KLTTrackFeatures(
 	}
 
 	/* For each feature, do ... */
+	int debug_oob=0, debug_small_det=0, debug_large_res=0, debug_max_iter=0, debug_tracked=0;
 	for (indx = 0 ; indx < featurelist->nFeatures ; indx++)  {
 
 		/* Only track features that are not lost */
@@ -1381,6 +1440,7 @@ void KLTTrackFeatures(
 
 			/* Record feature */
 			if (val == KLT_OOB) {
+				debug_oob++;
 				featurelist->feature[indx]->x   = -1.0;
 				featurelist->feature[indx]->y   = -1.0;
 				featurelist->feature[indx]->val = KLT_OOB;
@@ -1392,6 +1452,7 @@ void KLTTrackFeatures(
 				featurelist->feature[indx]->aff_img_grady = NULL;
 
 			} else if (_outOfBounds(xlocout, ylocout, ncols, nrows, tc->borderx, tc->bordery))  {
+				debug_oob++;
 				featurelist->feature[indx]->x   = -1.0;
 				featurelist->feature[indx]->y   = -1.0;
 				featurelist->feature[indx]->val = KLT_OOB;
@@ -1402,6 +1463,7 @@ void KLTTrackFeatures(
 				featurelist->feature[indx]->aff_img_gradx = NULL;
 				featurelist->feature[indx]->aff_img_grady = NULL;
 			} else if (val == KLT_SMALL_DET)  {
+				debug_small_det++;
 				featurelist->feature[indx]->x   = -1.0;
 				featurelist->feature[indx]->y   = -1.0;
 				featurelist->feature[indx]->val = KLT_SMALL_DET;
@@ -1412,6 +1474,7 @@ void KLTTrackFeatures(
 				featurelist->feature[indx]->aff_img_gradx = NULL;
 				featurelist->feature[indx]->aff_img_grady = NULL;
 			} else if (val == KLT_LARGE_RESIDUE)  {
+				debug_large_res++;
 				featurelist->feature[indx]->x   = -1.0;
 				featurelist->feature[indx]->y   = -1.0;
 				featurelist->feature[indx]->val = KLT_LARGE_RESIDUE;
@@ -1422,6 +1485,7 @@ void KLTTrackFeatures(
 				featurelist->feature[indx]->aff_img_gradx = NULL;
 				featurelist->feature[indx]->aff_img_grady = NULL;
 			} else if (val == KLT_MAX_ITERATIONS)  {
+				debug_max_iter++;
 				featurelist->feature[indx]->x   = -1.0;
 				featurelist->feature[indx]->y   = -1.0;
 				featurelist->feature[indx]->val = KLT_MAX_ITERATIONS;
@@ -1432,6 +1496,7 @@ void KLTTrackFeatures(
 				featurelist->feature[indx]->aff_img_gradx = NULL;
 				featurelist->feature[indx]->aff_img_grady = NULL;
 			} else  {
+				debug_tracked++;
 				featurelist->feature[indx]->x = xlocout;
 				featurelist->feature[indx]->y = ylocout;
 				featurelist->feature[indx]->val = KLT_TRACKED;
@@ -1518,6 +1583,9 @@ void KLTTrackFeatures(
 	_KLTFreePyramid(pyramid1_gradx);
 	_KLTFreePyramid(pyramid1_grady);
 
+	// printf("DEBUG TRACKING: OOB=%d, SMALL_DET=%d, LARGE_RES=%d, MAX_ITER=%d, TRACKED=%d\n",
+	//  debug_oob, debug_small_det, debug_large_res, debug_max_iter, debug_tracked);
+
 	if (KLT_verbose >= 1)  {
 		fprintf(stderr,  "\n\t%d features successfully tracked.\n",
 			KLTCountRemainingFeatures(featurelist));
@@ -1526,6 +1594,10 @@ void KLTTrackFeatures(
 		fflush(stderr);
 	}
 
+	/* Clean up CUDA streams after final frame */
+	/* Note: Uncomment this when done with all tracking to free GPU resources */
+	/* if (use_streams && streams_initialized) {
+	   _KLTDestroyStreams();
+	   streams_initialized = 0;
+	}  */
 }
-
-

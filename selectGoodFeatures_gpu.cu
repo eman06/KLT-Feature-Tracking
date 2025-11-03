@@ -44,21 +44,79 @@ __device__ float _minEigenvalue_GPU(float gxx, float gxy, float gyy) {
 }
 
 // ------------------------------------------------------------
-// Compute minimum eigenvalue over window
+// Compute minimum eigenvalue over window - OPTIMIZED VERSION
+// Uses shared memory tiling, __restrict__ pointers, and occupancy hints
 // ------------------------------------------------------------
-__global__ void computeMinEigenvalue_kernel(const float *gradx, const float *grady, float *minEigenvalue,
-                                            int width, int height, int window_hw, int window_hh, int nSkippedPixels){
-    int x = (blockIdx.x*blockDim.x + threadIdx.x)*(nSkippedPixels+1);
-    int y = (blockIdx.y*blockDim.y + threadIdx.y)*(nSkippedPixels+1);
-    if(x>=window_hw && x<width-window_hw && y>=window_hh && y<height-window_hh){
-        float gxx=0, gxy=0, gyy=0, gx, gy;
-        for(int yy=y-window_hh; yy<=y+window_hh; yy++)
-            for(int xx=x-window_hw; xx<=x+window_hw; xx++){
-                int idx = yy*width + xx;
-                gx = gradx[idx]; gy = grady[idx];
-                gxx += gx*gx; gxy += gx*gy; gyy += gy*gy;
+__global__ void __launch_bounds__(256, 4)  // Occupancy: 256 threads/block, min 4 blocks/SM
+computeMinEigenvalue_kernel(const float * __restrict__ gradx, 
+                            const float * __restrict__ grady, 
+                            float * __restrict__ minEigenvalue,
+                            int width, int height, int window_hw, int window_hh, int nSkippedPixels){
+    
+    // Shared memory tile for gradient reuse (including halo region)
+    // TILE_SIZE = 16, so with halo we need (16 + 2*window_hw) x (16 + 2*window_hh)
+    // For typical 7x7 window (hw=3, hh=3): need (16+6)x(16+6) = 22x22 = 484 floats per gradient
+    // Total: 2 * 484 * 4 bytes = ~3.9 KB per block (well within 48KB limit)
+    __shared__ float s_gradx[22][22];
+    __shared__ float s_grady[22][22];
+    
+    // Output pixel coordinates (accounting for stride)
+    int x_out = (blockIdx.x*blockDim.x + threadIdx.x)*(nSkippedPixels+1);
+    int y_out = (blockIdx.y*blockDim.y + threadIdx.y)*(nSkippedPixels+1);
+    
+    // Shared memory coordinates (local to tile)
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    
+    // Top-left corner of the tile in global memory (includes halo)
+    int tile_x_start = blockIdx.x * blockDim.x * (nSkippedPixels+1) - window_hw;
+    int tile_y_start = blockIdx.y * blockDim.y * (nSkippedPixels+1) - window_hh;
+    
+    int tile_width = blockDim.x + 2*window_hw;
+    int tile_height = blockDim.y + 2*window_hh;
+    
+    // Cooperatively load tile into shared memory (each thread loads multiple elements)
+    for(int i = ty; i < tile_height; i += blockDim.y){
+        for(int j = tx; j < tile_width; j += blockDim.x){
+            int global_x = tile_x_start + j;
+            int global_y = tile_y_start + i;
+            
+            // Clamp to image boundaries
+            global_x = max(0, min(global_x, width-1));
+            global_y = max(0, min(global_y, height-1));
+            
+            int global_idx = global_y * width + global_x;
+            s_gradx[i][j] = gradx[global_idx];
+            s_grady[i][j] = grady[global_idx];
+        }
+    }
+    
+    __syncthreads();  // Wait for all threads to finish loading
+    
+    // Now compute eigenvalue using shared memory
+    if(x_out >= window_hw && x_out < width-window_hw && 
+       y_out >= window_hh && y_out < height-window_hh){
+        
+        float gxx = 0.0f, gxy = 0.0f, gyy = 0.0f;
+        
+        // Access from shared memory (much faster!)
+        #pragma unroll 4
+        for(int dy = 0; dy <= 2*window_hh; dy++){
+            #pragma unroll 4
+            for(int dx = 0; dx <= 2*window_hw; dx++){
+                int s_x = tx + dx;
+                int s_y = ty + dy;
+                
+                float gx = s_gradx[s_y][s_x];
+                float gy = s_grady[s_y][s_x];
+                
+                gxx += gx * gx;
+                gxy += gx * gy;
+                gyy += gy * gy;
             }
-        minEigenvalue[y*width+x] = _minEigenvalue_GPU(gxx,gxy,gyy);
+        }
+        
+        minEigenvalue[y_out * width + x_out] = _minEigenvalue_GPU(gxx, gxy, gyy);
     }
 }
 
@@ -79,8 +137,13 @@ int KLTSelectGoodFeatures_GPU(KLT_TrackingContext tc, unsigned char *img, int nc
     cudaMemcpy(d_img, img, ncols*nrows*sizeof(unsigned char), cudaMemcpyHostToDevice);
     cudaMemset(d_minEigenvalues,0,ncols*nrows*sizeof(float));
 
-    dim3 blockDim(16,16);
-    dim3 gridDim((ncols+15)/16,(nrows+15)/16);
+    // OPTIMIZATION: Better launch configuration
+    // Use 16x16 blocks (256 threads) for good occupancy
+    // Adjust grid to account for stride (nSkippedPixels)
+    dim3 blockDim(16, 16);
+    int grid_x = (ncols / (tc->nSkippedPixels + 1) + blockDim.x - 1) / blockDim.x;
+    int grid_y = (nrows / (tc->nSkippedPixels + 1) + blockDim.y - 1) / blockDim.y;
+    dim3 gridDim(grid_x, grid_y);
 
     // ------------------------------------------------------------
     // GPU timing
@@ -113,7 +176,9 @@ int KLTSelectGoodFeatures_GPU(KLT_TrackingContext tc, unsigned char *img, int nc
     }
     // ------------------------------------------------------------
 
-    float *h_minEigenvalues = (float*)malloc(ncols*nrows*sizeof(float));
+    // OPTIMIZATION: Use pinned memory for faster D2H transfer
+    float *h_minEigenvalues;
+    cudaMallocHost(&h_minEigenvalues, ncols*nrows*sizeof(float));  // Pinned memory
     cudaMemcpy(h_minEigenvalues,d_minEigenvalues,ncols*nrows*sizeof(float),cudaMemcpyDeviceToHost);
 
     cudaFree(d_img); cudaFree(d_floatimg); cudaFree(d_gradx); cudaFree(d_grady); cudaFree(d_minEigenvalues);
@@ -130,7 +195,7 @@ int KLTSelectGoodFeatures_GPU(KLT_TrackingContext tc, unsigned char *img, int nc
             }
         }
 
-    free(h_minEigenvalues);
+    cudaFreeHost(h_minEigenvalues);  // Free pinned memory
 
     // Sort descending by minEigenvalue
     for(int i=0;i<npoints-1;i++){
