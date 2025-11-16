@@ -1,1 +1,2 @@
-V1 : The given sequential implementation WITH profiling with gprof.
+V4 : Optimization using OpenACC directives.
+
